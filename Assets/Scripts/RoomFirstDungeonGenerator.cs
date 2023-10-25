@@ -8,7 +8,7 @@ using Random = UnityEngine.Random;
 public class RoomFirstDungeonGenerator : GeneratorDungeon
 {
     [SerializeField]
-    private int minRoomWidth =4, minRoomHeight = 4;
+    private int minRoomWidth = 4, minRoomHeight = 4;
     [SerializeField]
     private int dungeonWidth = 20, dungeonHeight = 20;
     [SerializeField]
