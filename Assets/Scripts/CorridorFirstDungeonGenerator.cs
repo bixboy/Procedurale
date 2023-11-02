@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using Unity.VisualScripting;
 using UnityEngine;
 
 public class CorridorFirstDungeonGenerator : GeneratorDungeon
@@ -11,6 +12,16 @@ public class CorridorFirstDungeonGenerator : GeneratorDungeon
     [SerializeField]
     [Range(0.1f, 1)]
     private float roomPercent = 0.8f;
+
+    //PCG Data
+    private Dictionary<Vector2Int, HashSet<Vector2Int>> roomsDictionary = new Dictionary<Vector2Int, HashSet<Vector2Int>>();
+
+    private HashSet<Vector2Int> floorPositions, corridorPositions;
+
+    //Gizmos Data
+    private List<Color> roomColors = new List<Color>();
+    [SerializeField]
+    private bool showRoomGizmo = false, showCorridorsGizmo;
 
     protected override void RunProceduralGeneration()
     {
@@ -22,7 +33,7 @@ public class CorridorFirstDungeonGenerator : GeneratorDungeon
         HashSet<Vector2Int> floorPositions = new HashSet<Vector2Int>();
         HashSet<Vector2Int> potentialRoomPositions = new HashSet<Vector2Int>();
 
-        CreatCorridors(floorPositions, potentialRoomPositions);
+        List<List<Vector2Int>> corridors = CreatCorridors(floorPositions, potentialRoomPositions);
 
         HashSet<Vector2Int> roomPositions = CreateRoom(potentialRoomPositions);
 
@@ -31,6 +42,13 @@ public class CorridorFirstDungeonGenerator : GeneratorDungeon
         CreatRoomsAtDeadEnd(deadEnds, roomPositions);
 
         floorPositions.UnionWith(roomPositions);
+
+        for (int i = 0; i < corridors.Count; i++)
+        {
+            //corridors[i] = IncreaseCorridorSize(corridors[i]);
+            corridors[i] = IncreaseCorridorBrush3by3(corridors[i]);
+            floorPositions.UnionWith(roomPositions);
+        }
 
         tilemapVisualizer.PaintFloorTiles(floorPositions);
         WallGenerator.CreatWall(floorPositions, tilemapVisualizer);
@@ -71,26 +89,101 @@ public class CorridorFirstDungeonGenerator : GeneratorDungeon
         int roomToCreateCount = Mathf.RoundToInt(potentialRoomPositions.Count * roomPercent);
 
         List<Vector2Int> roomToCreat = potentialRoomPositions.OrderBy(x => Guid.NewGuid()).Take(roomToCreateCount).ToList();
-
+        ClearRoomData();
         foreach (var roomPosition in roomToCreat)
         {
             var roomFloor = RunRandomWalk(randomWalkParameters, roomPosition);
+
+            SaveRoomData(roomPosition, roomFloor);
             roomPositions.UnionWith(roomFloor);
         }
         return roomPositions;
     }
 
-    private void CreatCorridors(HashSet<Vector2Int> floorPositions, HashSet<Vector2Int> potentialRoomPositions)
+    private void ClearRoomData()
+    {
+        roomsDictionary.Clear();
+        roomColors.Clear();
+    }
+
+    private void SaveRoomData(Vector2Int roomPosition, HashSet<Vector2Int> roomFloor)
+    {
+        roomsDictionary[roomPosition] = roomFloor;
+        roomColors.Add(UnityEngine.Random.ColorHSV());
+    }
+
+    private List<List<Vector2Int>> CreatCorridors(HashSet<Vector2Int> floorPositions, HashSet<Vector2Int> potentialRoomPositions)
     {
         var currentPosition = startPosition;
         potentialRoomPositions.Add(currentPosition);
+        List<List<Vector2Int>> corridors = new List<List<Vector2Int>>();
 
         for (int i = 0; i < corridorCount; i++)
         {
             var corridor = ProceduralAiGeneration.RandomWalkCorridor(currentPosition, corridorLength);
+            corridors.Add(corridor);
             currentPosition = corridor[corridor.Count - 1];
             potentialRoomPositions.Add(currentPosition);
             floorPositions.UnionWith(corridor);
         }
+        corridorPositions = new HashSet<Vector2Int>(floorPositions);
+        return corridors;
+    }
+
+    private List<Vector2Int> IncreaseCorridorBrush3by3(List<Vector2Int> corridor)
+    {
+        List<Vector2Int> newCorridor = new List<Vector2Int>();
+        for (int i = 1; i < corridor.Count; i++)
+        {
+            for (int x = -1; x < 2; x++)
+            {
+                for (int y = -1; y < 2; y++)
+                {
+                    newCorridor.Add(corridor[i - 1] + new Vector2Int(x, y));
+                }
+            }
+        }
+        return newCorridor;
+    }
+
+    private List<Vector2Int> IncreaseCorridorSize(List<Vector2Int> corridor)
+    {
+        List<Vector2Int> newCorridor = new List<Vector2Int>();
+        Vector2Int previewDirection = Vector2Int.zero;
+        for (int i = 1; i < corridor.Count; i++)
+        {
+            Vector2Int directionFromCell = corridor[i] - corridor[i - 1];
+            if (previewDirection != Vector2Int.zero && directionFromCell != previewDirection)
+            {
+                for (int x = -1; x < 2; x++)
+                {
+                    for (int y = -1; y < 2; y++)
+                    {
+                        newCorridor.Add(corridor[i - 1] + new Vector2Int(x, y)); 
+                    }
+                }
+                previewDirection = directionFromCell;
+            }
+            else
+            {
+                Vector2Int newCorridorTileOffset = GetDirection90From(directionFromCell);
+                newCorridor.Add(corridor[i - 1]);
+                newCorridor.Add(corridor[i - 1] + newCorridorTileOffset);
+            }
+        }
+        return newCorridor;
+    }
+
+    private Vector2Int GetDirection90From(Vector2Int direction)
+    {
+        if (direction == Vector2Int.up)
+            return Vector2Int.right;
+        if (direction == Vector2Int.right)
+            return Vector2Int.down;
+        if (direction == Vector2Int.down)
+            return Vector2Int.left;
+        if (direction == Vector2Int.left)
+            return Vector2Int.up;
+        return Vector2Int.zero;
     }
 }
